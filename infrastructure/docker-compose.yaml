@@ -1,0 +1,93 @@
+version: '2.4'
+
+services:
+
+  prometheus:
+    container_name: kdg-prometheus
+    cpus: 1
+    image: prom/prometheus:v2.13.1
+    mem_limit: 500m
+    networks:
+      - kdg
+    ports:
+      - '9090:9090'
+    volumes:
+      - ./prometheus/prometheus.yaml:/etc/prometheus/prometheus.yml
+
+  grafana:
+    container_name: kdg-grafana
+    cpus: 1
+    image: grafana/grafana:6.4.3
+    mem_limit: 500m
+    networks:
+      - kdg
+    ports:
+      - '3000:3000'
+    volumes:
+      - ./grafana:/var/lib/grafana
+
+  elasticsearch:
+    container_name: kdg-elasticsearch
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9200/_cluster/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    image: elasticsearch:7.4.2
+    networks:
+      - kdg
+    ports:
+      - '9200:9200'
+      - '9300:9300'
+    volumes:
+      - ./elasticsearch/data:/usr/share/elasticsearch/data
+  
+  kibana:
+    container_name: kdg-kibana
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+    image: kibana:7.4.2
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5601/api/status"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    networks:
+      - kdg
+    ports:
+      - '5601:5601'
+
+  logstash:
+    image: logstash:7.4.2
+    command: logstash -f /etc/logstash/conf.d/logstash.conf
+    container_name: kdg-logstash
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+    networks:
+      - kdg
+    ports:
+      - '5000:5000'
+    volumes:
+      - ./logstash:/etc/logstash/conf.d
+
+  zipkin:
+    container_name: kdg-zipkin
+    cpus: 1
+    image: openzipkin/zipkin-slim:2.19.1
+    mem_limit: 500m
+    networks:
+      - kdg
+    ports:
+      - '9411:9411'
+
+networks:
+  kdg:
+    external:
+      name: kdg
